@@ -1,50 +1,84 @@
-rules_version = '2';
+// #16 — Firestore Security Rules
+// 部署方式：firebase deploy --only firestore:rules
+// 或在 Firebase Console > Firestore > 規則 貼上此內容
 
+rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // ── Users ────────────────────────────────────────────────────────────────
-    // 只有 authUid 符合的使用者才能讀取或更新自己的文件。
-    // 建立時驗證 authUid 必須等於呼叫者的 uid。
+    // ── helpers ────────────────────────────────────────────────────────────
+
+    // 判斷目前請求是否為已登入的 Firebase 用戶（含匿名）
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    // 判斷日期字串格式是否合法 YYYY-MM-DD
+    function isValidDateFormat(date) {
+      return date.matches('\\d{4}-\\d{2}-\\d{2}');
+    }
+
+    // 判斷日期是否在活動範圍內（2026-06-01 ~ 2026-06-30）
+    function isValidChallengeDate(date) {
+      return isValidDateFormat(date)
+        && date >= '2026-06-01'
+        && date <= '2026-06-30';
+    }
+
+    // ── users ──────────────────────────────────────────────────────────────
     match /users/{userId} {
-      allow read: if request.auth != null
-                  && resource.data.authUid == request.auth.uid;
+      // 任何已登入用戶皆可建立自己的帳號
+      allow create: if isSignedIn()
+        && request.resource.data.keys().hasAll(['name', 'authUid', 'pin', 'createdAt'])
+        && request.resource.data.name is string
+        && request.resource.data.name.size() > 0
+        && request.resource.data.name.size() <= 20
+        && request.resource.data.pin is string
+        && request.resource.data.pin.matches('\\d{4}')
+        && request.resource.data.authUid == request.auth.uid;
 
-      allow create: if request.auth != null
-                    && request.resource.data.authUid == request.auth.uid
-                    && request.resource.data.name is string
-                    && request.resource.data.name.size() > 0
-                    && request.resource.data.name.size() <= 20;
+      // 只有帳號擁有者（authUid 與 Firebase uid 相符）可以讀取和更新
+      allow read: if isSignedIn()
+        && (resource.data.authUid == request.auth.uid);
 
-      allow update: if request.auth != null
-                    && resource.data.authUid == request.auth.uid;
+      allow update: if isSignedIn()
+        && (resource.data.authUid == request.auth.uid
+            || request.resource.data.authUid == request.auth.uid)
+        // 只允許更新 authUid 欄位（換裝置補救），不允許修改 name、pin
+        && request.resource.data.name == resource.data.name
+        && request.resource.data.pin == resource.data.pin;
 
-      allow delete: if false;
+      allow delete: if false; // 不允許刪除
     }
 
-    // ── CheckIns ─────────────────────────────────────────────────────────────
-    // doc id 格式：{userId}_{date}
-    // 只允許寫入 userId 對應到自己帳號的 checkin。
+    // 允許按名字+PIN 查詢（recoverByNameAndPin 用）
+    // 注意：Firestore 無法在規則中限制 where 查詢，
+    // 需靠 composite index 和客戶端驗證雙重防護。
+    match /users/{userId} {
+      allow list: if isSignedIn();
+    }
+
+    // ── checkins ──────────────────────────────────────────────────────────
     match /checkins/{checkinId} {
-      // 讀取：只能查自己的 userId
-      allow read: if request.auth != null
-                  && isOwnerOfUserId(resource.data.userId);
+      // 只有帳號擁有者可以讀取自己的打卡記錄
+      allow read: if isSignedIn()
+        && resource.data.userId != null
+        && exists(/databases/$(database)/documents/users/$(resource.data.userId))
+        && get(/databases/$(database)/documents/users/$(resource.data.userId)).data.authUid == request.auth.uid;
 
-      // 建立 / 更新：checkin 的 userId 必須屬於呼叫者，且 date 格式合法
-      allow create, update: if request.auth != null
-                             && isOwnerOfUserId(request.resource.data.userId)
-                             && request.resource.data.date is string
-                             && request.resource.data.date.matches('\\d{4}-\\d{2}-\\d{2}')
-                             && request.resource.data.completed is bool;
+      // 允許已登入用戶建立/更新打卡記錄，並驗證：
+      // 1. 文件 ID 格式為 {userId}_{date}
+      // 2. 日期在活動範圍內
+      // 3. userId 欄位對應到自己的帳號
+      allow create, update: if isSignedIn()
+        && request.resource.data.keys().hasAll(['userId', 'date', 'completed'])
+        && request.resource.data.completed is bool
+        && isValidChallengeDate(request.resource.data.date)
+        && checkinId == request.resource.data.userId + '_' + request.resource.data.date
+        && exists(/databases/$(database)/documents/users/$(request.resource.data.userId))
+        && get(/databases/$(database)/documents/users/$(request.resource.data.userId)).data.authUid == request.auth.uid;
 
       allow delete: if false;
-    }
-
-    // ── Helper ───────────────────────────────────────────────────────────────
-    // 確認某個 userId 文件的 authUid 等於目前登入者的 uid
-    function isOwnerOfUserId(userId) {
-      let userDoc = get(/databases/$(database)/documents/users/$(userId));
-      return userDoc.data.authUid == request.auth.uid;
     }
   }
 }

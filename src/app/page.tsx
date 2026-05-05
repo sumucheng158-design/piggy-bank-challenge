@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { startChallenge, recoverByName } from "@/lib/auth";
+import { startChallenge, recoverByNameAndPin } from "@/lib/auth";
 
 // ── Static data ────────────────────────────────────────────────────────────
 
@@ -72,38 +72,68 @@ const STEPS = [
 // ── Types ──────────────────────────────────────────────────────────────────
 
 type Mode = "idle" | "new" | "recover";
+type Step = "namePin" | "goal"; // #11 — 新增目標設定步驟
 
 // ── Component ─────────────────────────────────────────────────────────────
 
 export default function HomePage() {
   const router = useRouter();
   const [mode, setMode] = useState<Mode>("idle");
+  const [step, setStep] = useState<Step>("namePin");
   const [name, setName] = useState("");
+  const [pin, setPin] = useState("");
+  const [goal, setGoal] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [checkingSession, setCheckingSession] = useState(true);
+
+  // #5 — 頁面載入時先檢查 localStorage，已登入直接跳轉
+  useEffect(() => {
+    const userId = localStorage.getItem("userId");
+    if (userId) {
+      router.replace("/calendar");
+    } else {
+      setCheckingSession(false);
+    }
+  }, [router]);
 
   function handleClose() {
     setMode("idle");
+    setStep("namePin");
     setName("");
+    setPin("");
+    setGoal("");
     setError("");
   }
 
-  async function handleStart() {
+  function validateNamePin(): string {
     const trimmed = name.trim();
-    if (!trimmed) {
-      setError("請輸入你的名字！");
-      return;
-    }
-    if (trimmed.length > 20) {
-      setError("名字太長了，請縮短一點。");
-      return;
-    }
+    if (!trimmed) return "請輸入你的名字！";
+    if (trimmed.length > 20) return "名字太長了，請縮短一點。";
+    if (!/^\d{4}$/.test(pin)) return "請輸入 4 位數字密碼！";
+    return "";
+  }
+
+  // 新帳號：先填名字+PIN，按下一步再填目標
+  function handleNextStep() {
+    const err = validateNamePin();
+    if (err) { setError(err); return; }
+    setError("");
+    setStep("goal");
+  }
+
+  async function handleStart() {
     setError("");
     setLoading(true);
     try {
-      const { userId, userName } = await startChallenge(trimmed);
+      const { userId, userName, goal: savedGoal } = await startChallenge(
+        name.trim(),
+        pin,
+        goal.trim() || undefined
+      );
       localStorage.setItem("userId", userId);
       localStorage.setItem("userName", userName);
+      if (savedGoal) localStorage.setItem("userGoal", savedGoal);
       router.push("/calendar");
     } catch (err) {
       console.error("Firebase 錯誤 [handleStart]：", err);
@@ -113,31 +143,20 @@ export default function HomePage() {
     }
   }
 
-  async function handleExistingUser() {
-    const userId = localStorage.getItem("userId");
-    if (userId) {
-      router.push("/calendar");
-      return;
-    }
-    setMode("recover");
-  }
-
   async function handleRecover() {
-    const trimmed = name.trim();
-    if (!trimmed) {
-      setError("請輸入你原來使用的名字！");
-      return;
-    }
+    const err = validateNamePin();
+    if (err) { setError(err); return; }
     setError("");
     setLoading(true);
     try {
-      const result = await recoverByName(trimmed);
+      const result = await recoverByNameAndPin(name.trim(), pin);
       if (!result) {
-        setError("找不到這個名字的帳號，請確認名字是否正確。");
+        setError("找不到符合的帳號，請確認名字和密碼是否正確。");
         return;
       }
       localStorage.setItem("userId", result.userId);
       localStorage.setItem("userName", result.userName);
+      if (result.goal) localStorage.setItem("userGoal", result.goal);
       router.push("/calendar");
     } catch (err) {
       console.error("Firebase 錯誤 [handleRecover]：", err);
@@ -148,6 +167,11 @@ export default function HomePage() {
   }
 
   const isFormOpen = mode === "new" || mode === "recover";
+
+  // 等待 session 檢查完成，避免首頁閃爍再跳轉
+  if (checkingSession) {
+    return <div className="min-h-screen bg-amber-50" />;
+  }
 
   return (
     <main className="min-h-screen bg-amber-50 overflow-x-hidden">
@@ -162,7 +186,6 @@ export default function HomePage() {
       {/* ── Hero ── */}
       <section className="relative pt-16 pb-20 px-4">
         <div className="max-w-3xl mx-auto text-center">
-          {/* Decorative coin icons (SVG) */}
           <div className="flex justify-center gap-8 mb-8">
             <span className="float text-amber-400" style={{ animationDelay: "0s" }}>
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-10 h-10">
@@ -206,7 +229,7 @@ export default function HomePage() {
           {!isFormOpen ? (
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
               <button
-                onClick={() => setMode("new")}
+                onClick={() => { setMode("new"); setStep("namePin"); }}
                 className="bg-amber-500 hover:bg-amber-400 active:bg-amber-600 text-white font-extrabold text-xl px-10 py-4 rounded-2xl shadow-lg shadow-amber-200 transition-all duration-200 hover:-translate-y-1 flex items-center justify-center gap-2"
               >
                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
@@ -215,7 +238,7 @@ export default function HomePage() {
                 立即開始挑戰
               </button>
               <button
-                onClick={handleExistingUser}
+                onClick={() => { setMode("recover"); setStep("namePin"); }}
                 className="bg-white hover:bg-amber-50 border-2 border-amber-300 text-amber-700 font-bold text-xl px-10 py-4 rounded-2xl transition-all duration-200 hover:-translate-y-1 flex items-center justify-center gap-2"
               >
                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
@@ -248,68 +271,160 @@ export default function HomePage() {
                 )}
               </div>
 
-              <h2 className="font-display text-2xl font-bold text-stone-800 mb-1">
-                {mode === "new" ? "你叫什麼名字？" : "找回我的帳號"}
-              </h2>
-              <p className="text-stone-500 text-sm mb-6">
-                {mode === "new"
-                  ? "輸入你的名字，開始你的挑戰！"
-                  : "輸入你之前使用的名字來找回進度。"}
-              </p>
+              {/* ── 新帳號步驟一：名字 + PIN ── */}
+              {mode === "new" && step === "namePin" && (
+                <>
+                  <h2 className="font-display text-2xl font-bold text-stone-800 mb-1">你叫什麼名字？</h2>
+                  <p className="text-stone-500 text-sm mb-6">輸入名字和 4 位數密碼，開始你的挑戰！</p>
 
-              <label
-                htmlFor="user-name"
-                className="block text-left text-sm font-semibold text-stone-600 mb-1"
-              >
-                名字
-              </label>
-              <input
-                id="user-name"
-                type="text"
-                placeholder="例如：小明、Amy"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                onKeyDown={(e) =>
-                  e.key === "Enter" &&
-                  (mode === "new" ? handleStart() : handleRecover())
-                }
-                maxLength={20}
-                className="w-full border-2 border-amber-200 focus:border-amber-400 outline-none rounded-xl px-4 py-3 text-lg font-semibold text-stone-800 bg-amber-50 placeholder:text-stone-400 mb-3 transition-colors"
-              />
-              {error && (
-                <p role="alert" className="text-red-500 text-sm font-semibold mb-3">
-                  {error}
-                </p>
+                  <label htmlFor="user-name" className="block text-left text-sm font-semibold text-stone-600 mb-1">名字</label>
+                  <input
+                    id="user-name"
+                    type="text"
+                    placeholder="例如：小明、Amy"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    maxLength={20}
+                    className="w-full border-2 border-amber-200 focus:border-amber-400 outline-none rounded-xl px-4 py-3 text-lg font-semibold text-stone-800 bg-amber-50 placeholder:text-stone-400 mb-3 transition-colors"
+                  />
+
+                  <label htmlFor="user-pin" className="block text-left text-sm font-semibold text-stone-600 mb-1">
+                    4 位數密碼
+                    <span className="text-stone-400 font-normal ml-1">（記住它，換裝置時需要）</span>
+                  </label>
+                  <input
+                    id="user-pin"
+                    type="password"
+                    inputMode="numeric"
+                    placeholder="請輸入 4 位數字"
+                    value={pin}
+                    onChange={(e) => setPin(e.target.value.replace(/\D/g, "").slice(0, 4))}
+                    onKeyDown={(e) => e.key === "Enter" && handleNextStep()}
+                    maxLength={4}
+                    className="w-full border-2 border-amber-200 focus:border-amber-400 outline-none rounded-xl px-4 py-3 text-lg font-semibold text-stone-800 bg-amber-50 placeholder:text-stone-400 mb-3 transition-colors tracking-widest"
+                  />
+
+                  {error && <p role="alert" className="text-red-500 text-sm font-semibold mb-3">{error}</p>}
+
+                  <button
+                    onClick={handleNextStep}
+                    className="w-full bg-amber-500 hover:bg-amber-400 text-white font-extrabold text-lg py-3 rounded-xl shadow-md shadow-amber-200 transition-all duration-200 flex items-center justify-center gap-2"
+                  >
+                    下一步：設定目標
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
+                      <path fillRule="evenodd" d="M3 10a.75.75 0 0 1 .75-.75h10.638L10.23 5.29a.75.75 0 1 1 1.04-1.08l5.5 5.25a.75.75 0 0 1 0 1.08l-5.5 5.25a.75.75 0 1 1-1.04-1.08l4.158-3.96H3.75A.75.75 0 0 1 3 10Z" clipRule="evenodd" />
+                    </svg>
+                  </button>
+                </>
               )}
-              <button
-                onClick={mode === "new" ? handleStart : handleRecover}
-                disabled={loading}
-                className="w-full bg-amber-500 hover:bg-amber-400 disabled:opacity-60 text-white font-extrabold text-lg py-3 rounded-xl shadow-md shadow-amber-200 transition-all duration-200 flex items-center justify-center gap-2"
-              >
-                {loading ? (
-                  <>
-                    <svg className="animate-spin w-4 h-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 0 1 8-8V0C5.373 0 0 5.373 0 12h4Z" />
-                    </svg>
-                    處理中…
-                  </>
-                ) : mode === "new" ? (
-                  <>
-                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
-                      <path fillRule="evenodd" d="M10 18a8 8 0 1 0 0-16 8 8 0 0 0 0 16Zm.75-11.25a.75.75 0 0 0-1.5 0v2.5h-2.5a.75.75 0 0 0 0 1.5h2.5v2.5a.75.75 0 0 0 1.5 0v-2.5h2.5a.75.75 0 0 0 0-1.5h-2.5v-2.5Z" clipRule="evenodd" />
-                    </svg>
-                    開始挑戰！
-                  </>
-                ) : (
-                  <>
-                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
-                      <path fillRule="evenodd" d="M9 3.5a5.5 5.5 0 1 0 0 11 5.5 5.5 0 0 0 0-11ZM2 9a7 7 0 1 1 12.452 4.391l3.328 3.329a.75.75 0 1 1-1.06 1.06l-3.329-3.328A7 7 0 0 1 2 9Z" clipRule="evenodd" />
-                    </svg>
-                    找回帳號
-                  </>
-                )}
-              </button>
+
+              {/* ── 新帳號步驟二：設定存錢目標 (#11) ── */}
+              {mode === "new" && step === "goal" && (
+                <>
+                  <h2 className="font-display text-2xl font-bold text-stone-800 mb-1">你的夢想目標是？</h2>
+                  <p className="text-stone-500 text-sm mb-6">設定一個存錢目標，讓自己更有動力！（可跳過）</p>
+
+                  <label htmlFor="user-goal" className="block text-left text-sm font-semibold text-stone-600 mb-1">我想存錢買⋯⋯</label>
+                  <input
+                    id="user-goal"
+                    type="text"
+                    placeholder="例如：一台遙控車、去迪士尼樂園"
+                    value={goal}
+                    onChange={(e) => setGoal(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && handleStart()}
+                    maxLength={30}
+                    className="w-full border-2 border-amber-200 focus:border-amber-400 outline-none rounded-xl px-4 py-3 text-lg font-semibold text-stone-800 bg-amber-50 placeholder:text-stone-400 mb-3 transition-colors"
+                  />
+
+                  {error && <p role="alert" className="text-red-500 text-sm font-semibold mb-3">{error}</p>}
+
+                  <button
+                    onClick={handleStart}
+                    disabled={loading}
+                    className="w-full bg-amber-500 hover:bg-amber-400 disabled:opacity-60 text-white font-extrabold text-lg py-3 rounded-xl shadow-md shadow-amber-200 transition-all duration-200 flex items-center justify-center gap-2 mb-2"
+                  >
+                    {loading ? (
+                      <>
+                        <svg className="animate-spin w-4 h-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 0 1 8-8V0C5.373 0 0 5.373 0 12h4Z" />
+                        </svg>
+                        建立中…
+                      </>
+                    ) : (
+                      <>
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
+                          <path fillRule="evenodd" d="M10 18a8 8 0 1 0 0-16 8 8 0 0 0 0 16Zm.75-11.25a.75.75 0 0 0-1.5 0v2.5h-2.5a.75.75 0 0 0 0 1.5h2.5v2.5a.75.75 0 0 0 1.5 0v-2.5h2.5a.75.75 0 0 0 0-1.5h-2.5v-2.5Z" clipRule="evenodd" />
+                        </svg>
+                        開始挑戰！
+                      </>
+                    )}
+                  </button>
+                  <button
+                    onClick={() => setStep("namePin")}
+                    className="w-full text-stone-400 hover:text-stone-600 text-sm font-semibold py-2 transition-colors"
+                  >
+                    ← 返回修改名字
+                  </button>
+                </>
+              )}
+
+              {/* ── 找回帳號：名字 + PIN ── */}
+              {mode === "recover" && (
+                <>
+                  <h2 className="font-display text-2xl font-bold text-stone-800 mb-1">找回我的帳號</h2>
+                  <p className="text-stone-500 text-sm mb-6">輸入你之前使用的名字和密碼來找回進度。</p>
+
+                  <label htmlFor="recover-name" className="block text-left text-sm font-semibold text-stone-600 mb-1">名字</label>
+                  <input
+                    id="recover-name"
+                    type="text"
+                    placeholder="例如：小明、Amy"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    maxLength={20}
+                    className="w-full border-2 border-amber-200 focus:border-amber-400 outline-none rounded-xl px-4 py-3 text-lg font-semibold text-stone-800 bg-amber-50 placeholder:text-stone-400 mb-3 transition-colors"
+                  />
+
+                  <label htmlFor="recover-pin" className="block text-left text-sm font-semibold text-stone-600 mb-1">4 位數密碼</label>
+                  <input
+                    id="recover-pin"
+                    type="password"
+                    inputMode="numeric"
+                    placeholder="請輸入當初設定的密碼"
+                    value={pin}
+                    onChange={(e) => setPin(e.target.value.replace(/\D/g, "").slice(0, 4))}
+                    onKeyDown={(e) => e.key === "Enter" && handleRecover()}
+                    maxLength={4}
+                    className="w-full border-2 border-amber-200 focus:border-amber-400 outline-none rounded-xl px-4 py-3 text-lg font-semibold text-stone-800 bg-amber-50 placeholder:text-stone-400 mb-3 transition-colors tracking-widest"
+                  />
+
+                  {error && <p role="alert" className="text-red-500 text-sm font-semibold mb-3">{error}</p>}
+
+                  <button
+                    onClick={handleRecover}
+                    disabled={loading}
+                    className="w-full bg-amber-500 hover:bg-amber-400 disabled:opacity-60 text-white font-extrabold text-lg py-3 rounded-xl shadow-md shadow-amber-200 transition-all duration-200 flex items-center justify-center gap-2"
+                  >
+                    {loading ? (
+                      <>
+                        <svg className="animate-spin w-4 h-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 0 1 8-8V0C5.373 0 0 5.373 0 12h4Z" />
+                        </svg>
+                        處理中…
+                      </>
+                    ) : (
+                      <>
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
+                          <path fillRule="evenodd" d="M9 3.5a5.5 5.5 0 1 0 0 11 5.5 5.5 0 0 0 0-11ZM2 9a7 7 0 1 1 12.452 4.391l3.328 3.329a.75.75 0 1 1-1.06 1.06l-3.329-3.328A7 7 0 0 1 2 9Z" clipRule="evenodd" />
+                        </svg>
+                        找回帳號
+                      </>
+                    )}
+                  </button>
+                </>
+              )}
             </div>
           )}
         </div>
@@ -318,15 +433,11 @@ export default function HomePage() {
       {/* ── How it works ── */}
       <section className="relative py-16 px-4 bg-white">
         <div className="max-w-3xl mx-auto">
-          <h2 className="font-display text-3xl font-extrabold text-center text-stone-800 mb-10">
-            如何參加？
-          </h2>
+          <h2 className="font-display text-3xl font-extrabold text-center text-stone-800 mb-10">如何參加？</h2>
           <div className="grid sm:grid-cols-3 gap-6">
             {STEPS.map((s) => (
               <div key={s.num} className="text-center p-6 rounded-2xl bg-amber-50 border border-amber-100">
-                <div className="font-display text-5xl font-extrabold text-amber-300 mb-3">
-                  {s.num}
-                </div>
+                <div className="font-display text-5xl font-extrabold text-amber-300 mb-3">{s.num}</div>
                 <div className="flex justify-center mb-2">{s.icon}</div>
                 <h3 className="font-bold text-stone-800 text-lg mb-1">{s.title}</h3>
                 <p className="text-stone-500 text-sm">{s.desc}</p>
@@ -339,9 +450,7 @@ export default function HomePage() {
       {/* ── Rewards ── */}
       <section className="relative py-16 px-4">
         <div className="max-w-3xl mx-auto">
-          <h2 className="font-display text-3xl font-extrabold text-center text-stone-800 mb-2">
-            完成挑戰可獲得
-          </h2>
+          <h2 className="font-display text-3xl font-extrabold text-center text-stone-800 mb-2">完成挑戰可獲得</h2>
           <p className="text-center text-stone-500 mb-10">完成全部30天打卡，即可兌換以下獎勵</p>
           <div className="grid sm:grid-cols-3 gap-6">
             {REWARDS.map((r) => (

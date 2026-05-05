@@ -4,11 +4,13 @@ import { CHALLENGE_TOTAL_DAYS } from "@/lib/config";
 
 interface ProgressBarProps {
   completed: number;
+  streak: number; // #7 — 連續打卡天數
   total?: number;
 }
 
 export default function ProgressBar({
   completed,
+  streak,
   total = CHALLENGE_TOTAL_DAYS,
 }: ProgressBarProps) {
   const pct = total === 0 ? 0 : Math.round((completed / total) * 100);
@@ -50,6 +52,17 @@ export default function ProgressBar({
           />
         ))}
       </div>
+      {/* #7 — 連續打卡天數徽章 */}
+      {streak > 1 && (
+        <div className="flex items-center justify-center gap-1.5 pt-1">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4 text-orange-500">
+            <path fillRule="evenodd" d="M12.963 2.286a.75.75 0 0 0-1.071-.136 9.742 9.742 0 0 0-3.539 6.176 7.547 7.547 0 0 1-1.705-1.715.75.75 0 0 0-1.152-.082A9 9 0 1 0 15.68 4.534a7.46 7.46 0 0 1-2.717-2.248ZM15.75 14.25a3.75 3.75 0 1 1-7.313-1.172c.628.465 1.35.81 2.133 1a5.99 5.99 0 0 1 1.925-3.545 3.75 3.75 0 0 1 3.255 3.717Z" clipRule="evenodd" />
+          </svg>
+          <span className="text-xs font-bold text-orange-500">
+            連續 {streak} 天打卡！
+          </span>
+        </div>
+      )}
     </div>
   );
 }

@@ -1,9 +1,9 @@
-import { signInAnonymously, onAuthStateChanged, User } from "firebase/auth";
+import { signInAnonymously, signOut, onAuthStateChanged, User } from "firebase/auth";
 import { auth } from "./firebase";
 import {
   createUser,
   getUserByAuthUid,
-  getUserByName,
+  getUserByNameAndPin,
   linkAuthIdToUser,
 } from "./firestore";
 
@@ -29,45 +29,54 @@ export async function ensureAnonymousAuth(): Promise<User> {
 }
 
 /**
- * 以名字開始挑戰。
- *
- * 修正 #1：先用 authUid 查找既有帳號（避免同裝置重複建立），
- * 而非用 uid 去比對 name 欄位（原本邏輯混用）。
+ * #4 — 登出時同時清除 Firebase Anonymous Auth session，
+ * 確保同一裝置可以建立新的獨立帳號。
+ */
+export async function signOutAnonymous(): Promise<void> {
+  try {
+    await signOut(auth);
+  } catch (err) {
+    console.warn("[Auth] signOut 失敗（忽略）：", err);
+  }
+}
+
+/**
+ * 以名字和 PIN 開始挑戰。
+ * #1 — PIN 作為第二因子，防止同名帳號混淆。
  */
 export async function startChallenge(
-  name: string
-): Promise<{ userId: string; userName: string }> {
+  name: string,
+  pin: string,
+  goal?: string
+): Promise<{ userId: string; userName: string; goal?: string }> {
   const firebaseUser = await ensureAnonymousAuth();
   const uid = firebaseUser.uid;
 
   // 同一裝置已有帳號 → 直接回傳，不重複建立
   const existing = await getUserByAuthUid(uid);
   if (existing) {
-    return { userId: existing.id, userName: existing.name };
+    return { userId: existing.id, userName: existing.name, goal: existing.goal };
   }
 
   // 全新帳號
-  const user = await createUser(name, uid);
-  return { userId: user.id, userName: user.name };
+  const user = await createUser(name, uid, pin, goal);
+  return { userId: user.id, userName: user.name, goal: user.goal };
 }
 
 /**
- * 以名字找回帳號（換裝置 / 清除 localStorage 補救）。
- *
- * 修正 #4：名字不唯一，找到帳號後用 authUid 做額外確認，
- * 避免直接讓陌生人登入同名帳號（此處為最佳實務，
- * 正式產品建議改用 OTP 或密碼驗證）。
+ * 以名字 + PIN 找回帳號（換裝置 / 清除 localStorage 補救）。
+ * #1 — PIN 驗證防止同名帳號被他人搶佔。
  */
-export async function recoverByName(
-  name: string
-): Promise<{ userId: string; userName: string } | null> {
+export async function recoverByNameAndPin(
+  name: string,
+  pin: string
+): Promise<{ userId: string; userName: string; goal?: string } | null> {
   const firebaseUser = await ensureAnonymousAuth();
   const uid = firebaseUser.uid;
 
-  const found = await getUserByName(name);
+  const found = await getUserByNameAndPin(name, pin);
   if (!found) return null;
 
-  // 把目前裝置的 uid 關聯到找到的帳號
   await linkAuthIdToUser(found.id, uid);
-  return { userId: found.id, userName: found.name };
+  return { userId: found.id, userName: found.name, goal: found.goal };
 }

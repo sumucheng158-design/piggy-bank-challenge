@@ -17,12 +17,15 @@ import {
   CHALLENGE_YEAR,
   CHALLENGE_MONTH,
   CHALLENGE_TOTAL_DAYS,
+  BACKDATING_DAYS,
 } from "./config";
 
 export interface User {
   id: string;
   name: string;
   authUid: string;
+  pin: string;           // #1 — 4位數字 PIN，防止同名帳號衝突
+  goal?: string;         // #11 — 存錢目標
   createdAt: Timestamp | null;
 }
 
@@ -35,15 +38,19 @@ export interface CheckIn {
 interface UserWriteData {
   name: string;
   authUid: string;
+  pin: string;
+  goal?: string;
   createdAt: FieldValue;
 }
 
-// ── 日期合法性驗證 (#2) ──────────────────────────────────────────────────────
+// ── 日期合法性驗證（#2 修正：允許 BACKDATING_DAYS 天內補打） ────────────────
 
 /**
  * 驗證 date 字串是否為合法的挑戰日期：
  * - 格式必須為 YYYY-MM-DD
- * - 必須落在活動期間內（不允許未來日期相對今天台灣時）
+ * - 必須落在活動期間內
+ * - 不允許打卡未來日期
+ * - 允許往前 BACKDATING_DAYS 天補打
  */
 function isValidChallengeDate(date: string): boolean {
   const re = /^\d{4}-\d{2}-\d{2}$/;
@@ -59,33 +66,42 @@ function isValidChallengeDate(date: string): boolean {
     return false;
   }
 
-  // 不允許打卡未來日期（以台灣時間為準）
   const cellDate = new Date(y, m - 1, d);
   const todayTW = new Date(
     new Date().toLocaleString("en-US", { timeZone: "Asia/Taipei" })
   );
   todayTW.setHours(0, 0, 0, 0);
-  return cellDate <= todayTW;
+
+  // 不允許未來日期
+  if (cellDate > todayTW) return false;
+
+  // 不允許超過 BACKDATING_DAYS 天前的補打
+  const earliestAllowed = new Date(todayTW);
+  earliestAllowed.setDate(earliestAllowed.getDate() - BACKDATING_DAYS);
+  return cellDate >= earliestAllowed;
 }
 
 // ── Users ────────────────────────────────────────────────────────────────────
 
-export async function createUser(name: string, authUid: string): Promise<User> {
+export async function createUser(
+  name: string,
+  authUid: string,
+  pin: string,
+  goal?: string
+): Promise<User> {
   const usersRef = collection(db, "users");
   const newDocRef = doc(usersRef);
   const userData: UserWriteData = {
     name,
     authUid,
+    pin,
+    ...(goal ? { goal } : {}),
     createdAt: serverTimestamp(),
   };
   await setDoc(newDocRef, userData);
-  return { id: newDocRef.id, name, authUid, createdAt: null };
+  return { id: newDocRef.id, name, authUid, pin, goal, createdAt: null };
 }
 
-/**
- * 以 Firebase Auth uid 查詢使用者。
- * 若傳入 name，則同時比對名字（換裝置後的補救流程）。
- */
 export async function getUserByAuthUid(
   authUid: string
 ): Promise<User | null> {
@@ -102,12 +118,16 @@ export async function getUserByAuthUid(
 
 /**
  * 以名字查詢使用者（帳號補救用）。
- * 注意：名字不唯一，只取第一筆。
+ * #1 — 找到後還需比對 PIN 才算成功，防止同名帳號衝突。
  */
-export async function getUserByName(name: string): Promise<User | null> {
+export async function getUserByNameAndPin(
+  name: string,
+  pin: string
+): Promise<User | null> {
   const q = query(
     collection(db, "users"),
     where("name", "==", name),
+    where("pin", "==", pin),
     limit(1)
   );
   const snap = await getDocs(q);
@@ -133,10 +153,6 @@ export async function linkAuthIdToUser(
 
 // ── CheckIns ─────────────────────────────────────────────────────────────────
 
-/**
- * 取得指定使用者的打卡紀錄。
- * limit(CHALLENGE_TOTAL_DAYS) 防止超大資料集 (#13)。
- */
 export async function getCheckins(userId: string): Promise<CheckIn[]> {
   const q = query(
     collection(db, "checkins"),
@@ -147,10 +163,6 @@ export async function getCheckins(userId: string): Promise<CheckIn[]> {
   return snap.docs.map((d) => d.data() as CheckIn);
 }
 
-/**
- * 切換打卡狀態。
- * 伺服器端驗證日期合法性，拒絕非法請求 (#2)。
- */
 export async function toggleCheckin(
   userId: string,
   date: string,

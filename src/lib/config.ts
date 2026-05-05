@@ -6,6 +6,9 @@ export const CHALLENGE_YEAR = 2026;
 export const CHALLENGE_MONTH = 6; // 1-indexed
 export const CHALLENGE_TOTAL_DAYS = 30;
 
+/** 允許補打卡的天數（往前幾天內可以補打） */
+export const BACKDATING_DAYS = 7;
+
 /** 活動開始日（台灣時間） */
 export const CHALLENGE_START = new Date(
   CHALLENGE_YEAR,

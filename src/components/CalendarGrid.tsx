@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { CHALLENGE_YEAR, CHALLENGE_MONTH, TZ } from "@/lib/config";
+import { CHALLENGE_YEAR, CHALLENGE_MONTH, TZ, BACKDATING_DAYS } from "@/lib/config";
 
 interface CalendarGridProps {
   checkedDates: Set<string>;
@@ -21,7 +21,6 @@ function pad(n: number) {
   return String(n).padStart(2, "0");
 }
 
-/** 取得台灣時區的今日日期字串 YYYY-MM-DD (#12) */
 function getTodayTW(year: number, month: number): string | null {
   const nowTW = new Date(
     new Date().toLocaleString("en-US", { timeZone: TZ })
@@ -32,7 +31,7 @@ function getTodayTW(year: number, month: number): string | null {
   return null;
 }
 
-/** 判斷某天是否在台灣時區今日之後（未來） (#12) */
+/** 判斷某天是否在台灣時區今日之後（未來，不可打卡） */
 function isFutureTW(year: number, month: number, day: number): boolean {
   const nowTW = new Date(
     new Date().toLocaleString("en-US", { timeZone: TZ })
@@ -42,7 +41,22 @@ function isFutureTW(year: number, month: number, day: number): boolean {
   return cellDate > nowTW;
 }
 
-// ── 取消打卡確認 Dialog (#7) ─────────────────────────────────────────────────
+/**
+ * #2 — 判斷某天是否超過補打上限（太久以前，不可補打）
+ * 超過 BACKDATING_DAYS 天前的日期為 locked
+ */
+function isLockedTW(year: number, month: number, day: number): boolean {
+  const nowTW = new Date(
+    new Date().toLocaleString("en-US", { timeZone: TZ })
+  );
+  nowTW.setHours(0, 0, 0, 0);
+  const earliest = new Date(nowTW);
+  earliest.setDate(earliest.getDate() - BACKDATING_DAYS);
+  const cellDate = new Date(year, month - 1, day);
+  return cellDate < earliest;
+}
+
+// ── 取消打卡確認 Dialog ──────────────────────────────────────────────────────
 
 interface ConfirmDialogProps {
   day: number;
@@ -59,38 +73,17 @@ function ConfirmDialog({ day, month, onConfirm, onCancel }: ConfirmDialogProps) 
       aria-labelledby="confirm-title"
       className="fixed inset-0 z-50 flex items-center justify-center px-4"
     >
-      {/* Backdrop */}
-      <div
-        className="absolute inset-0 bg-black/30 backdrop-blur-sm"
-        onClick={onCancel}
-      />
+      <div className="absolute inset-0 bg-black/30 backdrop-blur-sm" onClick={onCancel} />
       <div className="relative bg-white rounded-3xl shadow-2xl border border-amber-100 p-8 max-w-xs w-full text-center">
-        {/* Icon */}
         <div className="w-12 h-12 mx-auto mb-4 rounded-full bg-amber-100 flex items-center justify-center">
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth={1.5}
-            className="w-6 h-6 text-amber-600"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              d="M9 15 3 9m0 0 6-6M3 9h12a6 6 0 0 1 0 12h-3"
-            />
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} className="w-6 h-6 text-amber-600">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M9 15 3 9m0 0 6-6M3 9h12a6 6 0 0 1 0 12h-3" />
           </svg>
         </div>
-        <h2
-          id="confirm-title"
-          className="font-display text-xl font-extrabold text-stone-800 mb-2"
-        >
+        <h2 id="confirm-title" className="font-display text-xl font-extrabold text-stone-800 mb-2">
           取消 {month} 月 {day} 日的打卡？
         </h2>
-        <p className="text-stone-500 text-sm mb-6">
-          這個動作會移除今天的打卡紀錄，確定要繼續嗎？
-        </p>
+        <p className="text-stone-500 text-sm mb-6">這個動作會移除這天的打卡紀錄，確定要繼續嗎？</p>
         <div className="flex gap-3">
           <button
             onClick={onCancel}
@@ -145,7 +138,6 @@ export default function CalendarGrid({
     const date = dateStr(day);
     const completed = checkedDates.has(date);
     if (completed) {
-      // #7 — 取消打卡需二次確認
       setConfirmDay(day);
     } else {
       onDayClick(date);
@@ -193,8 +185,7 @@ export default function CalendarGrid({
           ))}
         </div>
 
-        {/* Day cells */}
-        {/* #8 — 最小觸控尺寸 44px via min-h-[44px] min-w-[44px] */}
+        {/* Day cells — #6 確保最小觸控尺寸，使用 min-h/min-w 明確保障 */}
         <div className="grid grid-cols-7 gap-1 p-3">
           {cells.map((day, idx) => {
             if (day === null) {
@@ -205,20 +196,29 @@ export default function CalendarGrid({
             const completed = checkedDates.has(date);
             const isToday = date === today;
             const future = isFutureTW(year, month, day);
+            const locked = isLockedTW(year, month, day); // #2 — 超過補打期限
+            const disabled = future || locked;
             const isToggling = toggling === date;
 
             return (
               <button
                 key={date}
-                onClick={() => !future && handleCellClick(day)}
-                disabled={isToggling || future}
-                aria-label={`${month}月${day}日 ${completed ? "已完成" : future ? "尚未開放" : "未完成"}`}
+                onClick={() => !disabled && handleCellClick(day)}
+                disabled={isToggling || disabled}
+                aria-label={`${month}月${day}日 ${
+                  completed ? "已完成（點擊取消）" :
+                  future ? "尚未開放" :
+                  locked ? "已超過補打期限" : "未完成，點擊打卡"
+                }`}
                 aria-pressed={completed}
+                title={locked && !completed ? `超過 ${BACKDATING_DAYS} 天不可補打` : undefined}
                 className={[
-                  // #8 — 確保最小 44×44px 觸控面積
-                  "day-cell relative min-h-[44px] min-w-0 aspect-square rounded-xl flex flex-col items-center justify-center gap-0.5 text-sm font-bold border-2 select-none",
+                  // #6 — min-h 和 min-w 同時設定，確保小螢幕不被擠壓
+                  "day-cell relative min-h-[44px] min-w-[36px] aspect-square rounded-xl flex flex-col items-center justify-center gap-0.5 text-sm font-bold border-2 select-none",
                   future
                     ? "bg-stone-50 border-stone-100 text-stone-300 cursor-not-allowed"
+                    : locked
+                    ? "bg-stone-50 border-stone-100 text-stone-300 cursor-not-allowed opacity-50"
                     : completed
                     ? "bg-amber-400 border-amber-500 text-white cursor-pointer shadow-md shadow-amber-200 completed"
                     : "bg-amber-50 border-amber-200 text-stone-700 cursor-pointer hover:border-amber-400 hover:bg-amber-100",
@@ -228,19 +228,8 @@ export default function CalendarGrid({
               >
                 <span className={completed ? "text-xs" : "text-sm"}>{day}</span>
                 {completed && (
-                  /* SVG check mark replaces emoji ✓ */
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    viewBox="0 0 16 16"
-                    fill="currentColor"
-                    className="w-3.5 h-3.5"
-                    aria-hidden="true"
-                  >
-                    <path
-                      fillRule="evenodd"
-                      d="M12.416 3.376a.75.75 0 0 1 .208 1.04l-5 7.5a.75.75 0 0 1-1.154.114l-3-3a.75.75 0 0 1 1.06-1.06l2.353 2.353 4.493-6.74a.75.75 0 0 1 1.04-.207Z"
-                      clipRule="evenodd"
-                    />
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5" aria-hidden="true">
+                    <path fillRule="evenodd" d="M12.416 3.376a.75.75 0 0 1 .208 1.04l-5 7.5a.75.75 0 0 1-1.154.114l-3-3a.75.75 0 0 1 1.06-1.06l2.353 2.353 4.493-6.74a.75.75 0 0 1 1.04-.207Z" clipRule="evenodd" />
                   </svg>
                 )}
                 {isToday && !completed && !future && (
@@ -250,6 +239,11 @@ export default function CalendarGrid({
             );
           })}
         </div>
+
+        {/* #2 — 補打說明 */}
+        <p className="text-center text-xs text-stone-400 pb-3">
+          可補打最近 {BACKDATING_DAYS} 天內的打卡紀錄
+        </p>
       </div>
     </>
   );
