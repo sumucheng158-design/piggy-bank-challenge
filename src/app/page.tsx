@@ -50,7 +50,8 @@ export default function HomePage() {
       localStorage.setItem("userId", userId);
       localStorage.setItem("userName", userName);
       router.push("/calendar");
-    } catch {
+    } catch (err) {
+      console.error("Firebase 錯誤 [handleStart]：", err);
       setError("發生錯誤，請稍後再試。");
     } finally {
       setLoading(false);
@@ -58,13 +59,11 @@ export default function HomePage() {
   }
 
   async function handleExistingUser() {
-    // 優先從 localStorage 取得，省略網路請求
     const userId = localStorage.getItem("userId");
     if (userId) {
       router.push("/calendar");
       return;
     }
-    // localStorage 已清空 → 顯示補救表單
     setMode("recover");
   }
 
@@ -85,7 +84,8 @@ export default function HomePage() {
       localStorage.setItem("userId", result.userId);
       localStorage.setItem("userName", result.userName);
       router.push("/calendar");
-    } catch {
+    } catch (err) {
+      console.error("Firebase 錯誤 [handleRecover]：", err);
       setError("發生錯誤，請稍後再試。");
     } finally {
       setLoading(false);
@@ -151,9 +151,7 @@ export default function HomePage() {
               </button>
             </div>
           ) : (
-            /* Registration / Recovery form */
             <div className="max-w-sm mx-auto bg-white rounded-3xl shadow-xl shadow-amber-100 p-8 border border-amber-100 relative">
-              {/* 關閉按鈕 */}
               <button
                 onClick={handleClose}
                 aria-label="關閉"
