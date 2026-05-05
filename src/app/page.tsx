@@ -471,7 +471,7 @@ export default function HomePage() {
 
       {/* ── Footer ── */}
       <footer className="py-8 text-center text-stone-400 text-sm border-t border-amber-100">
-        <p>小小大富翁養成計畫 ©2026 ｜ 活動期間：2026/6/1 – 2026/6/30</p>
+        <p>2026小小大富翁養成計畫｜ 活動期間：2026/6/1 – 2026/6/30</p>
       </footer>
     </main>
   );
