@@ -3,8 +3,8 @@
 @tailwind utilities;
 
 :root {
-  --font-display: 'Baloo 2', cursive;
-  --font-body: 'Nunito', sans-serif;
+  --font-display: var(--font-display, 'Baloo 2', cursive);
+  --font-body: var(--font-body, 'Nunito', sans-serif);
 
   --color-gold: #f59e0b;
   --color-gold-light: #fde68a;
@@ -86,4 +86,17 @@ body {
 
 .float {
   animation: float 3s ease-in-out infinite;
+}
+
+/* Skeleton pulse (#18) */
+@keyframes skeleton-pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.4; }
+}
+
+.skeleton {
+  background: linear-gradient(90deg, #fde68a 0%, #fef3c7 50%, #fde68a 100%);
+  background-size: 200% auto;
+  animation: shimmer 1.5s linear infinite;
+  border-radius: 0.75rem;
 }

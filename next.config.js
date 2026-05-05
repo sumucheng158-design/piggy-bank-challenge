@@ -1,7 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // 停用 Next.js 內建字體最佳化，讓 <link> 直接載入 Google Fonts
-  optimizeFonts: false,
+  // next/font/google 已在 layout.tsx 使用，不再需要關閉 optimizeFonts (#9 #10)
 };
 
 module.exports = nextConfig;

@@ -1,11 +1,16 @@
 "use client";
 
+import { CHALLENGE_TOTAL_DAYS } from "@/lib/config";
+
 interface ProgressBarProps {
   completed: number;
-  total: number;
+  total?: number;
 }
 
-export default function ProgressBar({ completed, total }: ProgressBarProps) {
+export default function ProgressBar({
+  completed,
+  total = CHALLENGE_TOTAL_DAYS,
+}: ProgressBarProps) {
   const pct = total === 0 ? 0 : Math.round((completed / total) * 100);
 
   const color =
@@ -20,12 +25,17 @@ export default function ProgressBar({ completed, total }: ProgressBarProps) {
       <div className="flex justify-between text-xs font-semibold text-stone-400">
         <span>0 天</span>
         <span className="text-amber-600 font-bold">{pct}%</span>
-        <span>30 天</span>
+        <span>{total} 天</span>
       </div>
       <div className="h-4 bg-amber-100 rounded-full overflow-hidden border border-amber-200">
         <div
           className={`h-full rounded-full bg-gradient-to-r ${color} progress-fill transition-all duration-700`}
           style={{ width: `${pct}%` }}
+          role="progressbar"
+          aria-valuenow={completed}
+          aria-valuemin={0}
+          aria-valuemax={total}
+          aria-label={`完成進度 ${pct}%`}
         />
       </div>
       {/* Milestone markers */}
