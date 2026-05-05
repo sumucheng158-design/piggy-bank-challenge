@@ -29,7 +29,7 @@ export default function CalendarPage() {
       return;
     }
     setUserId(id);
-    setUserName(name ?? "小挑戰者");
+    setUserName(name ?? "小小挑戰者");
   }, [router]);
 
   // Load checkins from Firestore
