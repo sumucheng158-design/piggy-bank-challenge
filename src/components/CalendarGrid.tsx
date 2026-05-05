@@ -6,9 +6,17 @@ interface CalendarGridProps {
   checkedDates: Set<string>;
   onDayClick: (date: string) => void;
   toggling: string | null;
+  /** 挑戰年份，預設 2026 */
+  year?: number;
+  /** 挑戰月份（1-indexed），預設 6 */
+  month?: number;
 }
 
 const WEEKDAYS = ["日", "一", "二", "三", "四", "五", "六"];
+const MONTH_NAMES = [
+  "一月", "二月", "三月", "四月", "五月", "六月",
+  "七月", "八月", "九月", "十月", "十一月", "十二月",
+];
 
 function pad(n: number) {
   return String(n).padStart(2, "0");
@@ -18,23 +26,25 @@ export default function CalendarGrid({
   checkedDates,
   onDayClick,
   toggling,
+  year = 2026,
+  month = 6,
 }: CalendarGridProps) {
-  // June 2026 starts on Monday (index 1 in 0=Sun week)
   const { days, offset } = useMemo(() => {
-    const year = 2026;
-    const month = 5; // 0-indexed → June
-    const firstDay = new Date(year, month, 1).getDay(); // 0=Sun
-    const daysInMonth = new Date(year, month + 1, 0).getDate(); // 30
+    const monthIdx = month - 1; // 0-indexed
+    const firstDay = new Date(year, monthIdx, 1).getDay(); // 0=Sun
+    const daysInMonth = new Date(year, monthIdx + 1, 0).getDate();
     return { days: daysInMonth, offset: firstDay };
-  }, []);
+  }, [year, month]);
+
+  const monthIdx = month - 1;
 
   const today = useMemo(() => {
     const d = new Date();
-    if (d.getFullYear() === 2026 && d.getMonth() === 5) {
-      return `2026-06-${pad(d.getDate())}`;
+    if (d.getFullYear() === year && d.getMonth() === monthIdx) {
+      return `${year}-${pad(month)}-${pad(d.getDate())}`;
     }
     return null;
-  }, []);
+  }, [year, month, monthIdx]);
 
   const cells = useMemo(() => {
     const result: (number | null)[] = [];
@@ -44,21 +54,22 @@ export default function CalendarGrid({
   }, [days, offset]);
 
   function dateStr(day: number) {
-    return `2026-06-${pad(day)}`;
+    return `${year}-${pad(month)}-${pad(day)}`;
   }
 
   function isFuture(day: number) {
-    const d = new Date();
-    const cellDate = new Date(2026, 5, day);
-    return cellDate > d;
+    const cellDate = new Date(year, monthIdx, day);
+    return cellDate > new Date();
   }
 
   return (
     <div className="bg-white rounded-3xl shadow-md shadow-amber-100 border border-amber-50 overflow-hidden">
       {/* Month header */}
       <div className="bg-gradient-to-r from-amber-500 to-yellow-400 px-6 py-4 text-white">
-        <p className="font-display font-extrabold text-2xl">2026年 六月</p>
-        <p className="text-amber-100 text-sm">June Challenge</p>
+        <p className="font-display font-extrabold text-2xl">
+          {year}年 {MONTH_NAMES[monthIdx]}
+        </p>
+        <p className="text-amber-100 text-sm">30-Day Challenge</p>
       </div>
 
       {/* Weekday headers */}
@@ -93,7 +104,8 @@ export default function CalendarGrid({
               key={date}
               onClick={() => !future && onDayClick(date)}
               disabled={isToggling || future}
-              aria-label={`6月${day}日 ${completed ? "已完成" : "未完成"}`}
+              aria-label={`${month}月${day}日 ${completed ? "已完成" : future ? "尚未開放" : "未完成"}`}
+              aria-pressed={completed}
               className={[
                 "day-cell relative aspect-square rounded-xl flex flex-col items-center justify-center gap-0.5 text-sm font-bold border-2 select-none",
                 future

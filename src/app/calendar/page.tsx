@@ -2,9 +2,11 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { getCheckins, toggleCheckin, getUser } from "@/lib/firestore";
+import { getCheckins, toggleCheckin } from "@/lib/firestore";
 import CalendarGrid from "@/components/CalendarGrid";
 import ProgressBar from "@/components/ProgressBar";
+
+export const dynamic = "force-dynamic";
 
 const TOTAL_DAYS = 30;
 
@@ -15,6 +17,8 @@ export default function CalendarPage() {
   const [checkedDates, setCheckedDates] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [toggling, setToggling] = useState<string | null>(null);
+  const [lastChecked, setLastChecked] = useState<string | null>(null);
+  const [shareMsg, setShareMsg] = useState("");
 
   // Load user from localStorage on mount
   useEffect(() => {
@@ -64,6 +68,8 @@ export default function CalendarPage() {
 
     try {
       await toggleCheckin(userId, date, !isCompleted);
+      // 打卡成功時顯示慶祝回饋
+      if (!isCompleted) setLastChecked(date);
     } catch {
       // Revert on failure
       setCheckedDates((prev) => {
@@ -77,10 +83,32 @@ export default function CalendarPage() {
     }
   }
 
+  // 清除慶祝提示
+  useEffect(() => {
+    if (!lastChecked) return;
+    const t = setTimeout(() => setLastChecked(null), 2000);
+    return () => clearTimeout(t);
+  }, [lastChecked]);
+
   function handleLogout() {
     localStorage.removeItem("userId");
     localStorage.removeItem("userName");
     router.push("/");
+  }
+
+  async function handleShare() {
+    const text = `我在「小小大富翁養成計畫」已完成 ${completedCount}／${TOTAL_DAYS} 天打卡！🐷💰`;
+    if (navigator.share) {
+      try {
+        await navigator.share({ title: "小小大富翁養成計畫", text });
+      } catch {
+        // user cancelled
+      }
+    } else {
+      await navigator.clipboard.writeText(text);
+      setShareMsg("已複製到剪貼簿！");
+      setTimeout(() => setShareMsg(""), 2500);
+    }
   }
 
   const completedCount = checkedDates.size;
@@ -97,7 +125,8 @@ export default function CalendarPage() {
             </span>
           </div>
           <div className="flex items-center gap-3">
-            <span className="text-stone-600 font-semibold text-sm hidden sm:block">
+            {/* 手機版也顯示用戶名 */}
+            <span className="text-stone-600 font-semibold text-sm">
               👋 {userName}
             </span>
             <button
@@ -154,6 +183,17 @@ export default function CalendarPage() {
           <ProgressBar completed={completedCount} total={TOTAL_DAYS} />
         </div>
 
+        {/* 打卡成功慶祝提示 */}
+        {lastChecked && (
+          <div
+            role="status"
+            aria-live="polite"
+            className="mb-4 bg-green-100 border border-green-300 text-green-800 font-bold text-center py-3 rounded-2xl text-lg animate-pop"
+          >
+            🎉 太棒了！今天打卡完成！
+          </div>
+        )}
+
         {/* Calendar */}
         {loading ? (
           <div className="bg-white rounded-3xl p-8 text-center shadow-md shadow-amber-100 border border-amber-50">
@@ -200,11 +240,39 @@ export default function CalendarPage() {
             </p>
           </div>
         )}
+
+        {/* 完成區塊 + 分享按鈕 */}
         {completedCount === TOTAL_DAYS && (
           <div className="mt-6 bg-gradient-to-r from-amber-400 via-yellow-300 to-amber-400 rounded-2xl p-6 text-center text-amber-900 shadow-lg">
             <div className="text-5xl mb-2">🏆🎉🥇</div>
             <p className="font-display font-extrabold text-2xl mb-1">挑戰完成！</p>
-            <p className="font-semibold">你已成為真正的理財小達人！請憑此頁面兌換你的獎勵。</p>
+            <p className="font-semibold mb-4">
+              你已成為真正的理財小達人！請憑此頁面兌換你的獎勵。
+            </p>
+            <button
+              onClick={handleShare}
+              className="bg-white text-amber-700 font-extrabold px-6 py-2.5 rounded-xl shadow hover:bg-amber-50 transition-colors text-base"
+            >
+              📣 分享我的成就
+            </button>
+            {shareMsg && (
+              <p className="mt-2 text-sm font-semibold text-amber-800">{shareMsg}</p>
+            )}
+          </div>
+        )}
+
+        {/* 非完成時也提供分享 */}
+        {completedCount > 0 && completedCount < TOTAL_DAYS && (
+          <div className="mt-4 text-center">
+            <button
+              onClick={handleShare}
+              className="text-stone-400 hover:text-amber-600 text-sm font-semibold underline underline-offset-2 transition-colors"
+            >
+              📣 分享我的進度
+            </button>
+            {shareMsg && (
+              <p className="mt-1 text-xs text-stone-400">{shareMsg}</p>
+            )}
           </div>
         )}
       </div>
