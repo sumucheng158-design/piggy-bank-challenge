@@ -5,10 +5,10 @@ import { SITE_URL } from "@/lib/config";
 export const metadata: Metadata = {
   title: "我的挑戰日曆",
   description:
-    "追蹤你的「小小大富翁養成計畫」30 天打卡進度，每日完成存錢任務，累積夢想！",
+    "追蹤你的「小小大富翁養成計畫30天打卡進度，每日完成存錢任務，累積夢想！",
   openGraph: {
     title: "我的挑戰日曆 | 小小大富翁養成計畫",
-    description: "追蹤你的 30 天打卡進度，每日完成存錢任務，累積夢想！",
+    description: "追蹤你的30天打卡進度，每日完成存錢任務，累積夢想！",
     type: "website",
     url: `${SITE_URL}/calendar`,
     images: [

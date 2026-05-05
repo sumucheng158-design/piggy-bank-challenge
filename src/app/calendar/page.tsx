@@ -325,7 +325,7 @@ export default function CalendarPage() {
           <h1 className="font-display text-3xl sm:text-4xl font-extrabold text-stone-800 mb-1">
             我的挑戰日曆
           </h1>
-          <p className="text-stone-500">2026 年 6 月 1 日 – 6 月 30 日</p>
+          <p className="text-stone-500">2026年6月1日 – 6月30日</p>
         </div>
 
         {/* #11 — 存錢目標橫幅 */}

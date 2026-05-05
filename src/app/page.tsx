@@ -110,7 +110,7 @@ export default function HomePage() {
     const trimmed = name.trim();
     if (!trimmed) return "請輸入你的名字！";
     if (trimmed.length > 20) return "名字太長了，請縮短一點。";
-    if (!/^\d{4}$/.test(pin)) return "請輸入 4 位數字密碼！";
+    if (!/^\d{4}$/.test(pin)) return "請輸入4位數字密碼！";
     return "";
   }
 
@@ -206,7 +206,7 @@ export default function HomePage() {
           </div>
 
           <div className="inline-block bg-amber-400 text-amber-900 text-sm font-bold px-4 py-1 rounded-full mb-4 tracking-wide uppercase">
-            2026 年 6 月挑戰活動
+            2026年6月挑戰活動
           </div>
 
           <h1 className="font-display text-4xl sm:text-5xl lg:text-6xl font-extrabold text-amber-900 leading-tight mb-4">
@@ -275,7 +275,7 @@ export default function HomePage() {
               {mode === "new" && step === "namePin" && (
                 <>
                   <h2 className="font-display text-2xl font-bold text-stone-800 mb-1">你叫什麼名字？</h2>
-                  <p className="text-stone-500 text-sm mb-6">輸入名字和 4 位數密碼，開始你的挑戰！</p>
+                  <p className="text-stone-500 text-sm mb-6">輸入名字和4位數密碼，開始你的挑戰！</p>
 
                   <label htmlFor="user-name" className="block text-left text-sm font-semibold text-stone-600 mb-1">名字</label>
                   <input
@@ -289,14 +289,14 @@ export default function HomePage() {
                   />
 
                   <label htmlFor="user-pin" className="block text-left text-sm font-semibold text-stone-600 mb-1">
-                    4 位數密碼
+                    4位數密碼
                     <span className="text-stone-400 font-normal ml-1">（記住它，換裝置時需要）</span>
                   </label>
                   <input
                     id="user-pin"
                     type="password"
                     inputMode="numeric"
-                    placeholder="請輸入 4 位數字"
+                    placeholder="請輸入4位數字"
                     value={pin}
                     onChange={(e) => setPin(e.target.value.replace(/\D/g, "").slice(0, 4))}
                     onKeyDown={(e) => e.key === "Enter" && handleNextStep()}
@@ -471,7 +471,7 @@ export default function HomePage() {
 
       {/* ── Footer ── */}
       <footer className="py-8 text-center text-stone-400 text-sm border-t border-amber-100">
-        <p>小小大富翁養成計畫 © 2026 ｜ 活動期間：2026/6/1 – 2026/6/30</p>
+        <p>小小大富翁養成計畫 ©2026 ｜ 活動期間：2026/6/1 – 2026/6/30</p>
       </footer>
     </main>
   );
